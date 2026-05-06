@@ -1,0 +1,1435 @@
+import streamlit as st
+import requests
+import json
+import time
+import os
+import re
+import base64
+from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+VIRUSTOTAL_API_KEY = os.getenv("VIRUSTOTAL_API_KEY", "")
+GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL       = "gemini-2.5-flash"
+GEMINI_ENDPOINT    = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+
+# ── Page config ───────────────────────────────────────────────────────────────
+st.set_page_config(
+    page_title="CyberSentinel AI",
+    page_icon="🛡️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+# ── Premium CSS ───────────────────────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
+
+/* ── Reset & Root ── */
+:root {
+  --bg-void:       #070b0f;
+  --bg-deep:       #0b1017;
+  --bg-panel:      #101820;
+  --bg-card:       #141e28;
+  --bg-input:      #111923;
+  --bg-hover:      #1a2535;
+
+  --border-dim:    rgba(255,255,255,0.06);
+  --border-glow:   rgba(0,200,150,0.3);
+  --border-accent: rgba(0,200,150,0.6);
+
+  --text-primary:  #e8f0fe;
+  --text-secondary:#8899aa;
+  --text-muted:    #4a5568;
+  --text-code:     #a8d8b9;
+
+  --accent:        #00c896;
+  --accent-dim:    rgba(0,200,150,0.12);
+  --accent-glow:   rgba(0,200,150,0.25);
+
+  --high:          #ff4d6d;
+  --high-dim:      rgba(255,77,109,0.12);
+  --high-glow:     rgba(255,77,109,0.3);
+
+  --medium:        #ffad3b;
+  --medium-dim:    rgba(255,173,59,0.12);
+  --medium-glow:   rgba(255,173,59,0.3);
+
+  --low:           #00c896;
+  --low-dim:       rgba(0,200,150,0.12);
+  --low-glow:      rgba(0,200,150,0.3);
+
+  --radius-sm:     6px;
+  --radius-md:     12px;
+  --radius-lg:     18px;
+  --radius-xl:     24px;
+
+  --font-mono:     'Space Mono', monospace;
+  --font-body:     'DM Sans', sans-serif;
+
+  --transition:    all 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ── Hide Streamlit chrome ── */
+#MainMenu, footer, header { visibility: hidden; }
+.stDeployButton { display: none; }
+[data-testid="stSidebar"] { display: none; }
+div[data-testid="stDecoration"] { display: none; }
+.stApp { background: var(--bg-void) !important; }
+section[data-testid="stAppViewContainer"] { background: var(--bg-void) !important; }
+.block-container { padding: 0 !important; max-width: 100% !important; }
+
+/* ── Layout shell ── */
+.cs-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--bg-void);
+}
+
+/* ── Header ── */
+.cs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--bg-deep);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.cs-header::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.4;
+}
+.cs-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.cs-logo {
+  width: 38px; height: 38px;
+  background: linear-gradient(135deg, var(--accent), #006655);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.cs-brand-text h1 {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0; letter-spacing: 0.5px;
+}
+.cs-brand-text p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0; letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.cs-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.cs-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--accent-dim);
+  border: 1px solid var(--border-glow);
+  border-radius: 100px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+.cs-status-dot {
+  width: 6px; height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-glow); }
+  50% { opacity: 0.6; box-shadow: 0 0 0 4px transparent; }
+}
+.cs-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+
+/* ── Main body ── */
+.cs-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* ── Sidebar ── */
+.cs-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--bg-deep);
+  border-right: 1px solid var(--border-dim);
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  gap: 8px;
+  overflow-y: auto;
+}
+.cs-sidebar-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 0 8px;
+  margin-bottom: 8px;
+  margin-top: 8px;
+}
+.cs-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition);
+  border: 1px solid transparent;
+}
+.cs-mode-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-dim);
+}
+.cs-mode-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--border-glow);
+}
+.cs-mode-icon {
+  width: 34px; height: 34px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.cs-mode-icon.url    { background: rgba(59,130,246,0.15); }
+.cs-mode-icon.email  { background: rgba(168,85,247,0.15); }
+.cs-mode-icon.text   { background: rgba(245,158,11,0.15); }
+.cs-mode-info h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 2px 0;
+}
+.cs-mode-info p {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
+.cs-sidebar-divider {
+  height: 1px;
+  background: var(--border-dim);
+  margin: 12px 0;
+}
+.cs-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 8px;
+}
+.cs-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.cs-stat-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+/* ── Chat area ── */
+.cs-chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-void);
+  position: relative;
+}
+
+/* Subtle grid background */
+.cs-chat-area::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--border-dim) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border-dim) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* ── Messages ── */
+.cs-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  position: relative;
+  z-index: 1;
+}
+.cs-messages::-webkit-scrollbar { width: 4px; }
+.cs-messages::-webkit-scrollbar-track { background: transparent; }
+.cs-messages::-webkit-scrollbar-thumb { background: var(--border-dim); border-radius: 4px; }
+
+/* ── Welcome state ── */
+.cs-welcome {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  text-align: center;
+  position: relative;
+  z-index: 1;
+}
+.cs-welcome-icon {
+  width: 72px; height: 72px;
+  background: linear-gradient(135deg, var(--accent-dim), var(--accent-glow));
+  border: 1px solid var(--border-glow);
+  border-radius: var(--radius-xl);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px;
+  margin-bottom: 24px;
+  box-shadow: 0 0 40px var(--accent-glow);
+}
+.cs-welcome h2 {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+  letter-spacing: 0.5px;
+}
+.cs-welcome p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  max-width: 420px;
+  line-height: 1.6;
+  margin: 0 0 40px 0;
+}
+.cs-welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  max-width: 520px;
+}
+.cs-chip {
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: 100px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+  font-family: var(--font-mono);
+}
+.cs-chip:hover {
+  border-color: var(--border-glow);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ── Message bubbles ── */
+.cs-msg {
+  display: flex;
+  gap: 14px;
+  max-width: 820px;
+  animation: msgIn 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+@keyframes msgIn {
+  from { opacity:0; transform:translateY(12px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.cs-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+.cs-msg.bot  { align-self: flex-start; }
+
+.cs-avatar {
+  width: 34px; height: 34px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.cs-avatar.user { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.cs-avatar.bot  {
+  background: linear-gradient(135deg, var(--accent), #006655);
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.cs-bubble {
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  font-size: 14px;
+  line-height: 1.65;
+  max-width: 680px;
+}
+.cs-bubble.user {
+  background: linear-gradient(135deg, rgba(59,130,246,0.2), rgba(29,78,216,0.15));
+  border: 1px solid rgba(59,130,246,0.25);
+  color: var(--text-primary);
+  border-top-right-radius: var(--radius-sm);
+}
+.cs-bubble.bot {
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  color: var(--text-primary);
+  border-top-left-radius: var(--radius-sm);
+}
+.cs-msg-meta {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 6px;
+  padding: 0 4px;
+}
+.cs-msg.user .cs-msg-meta { text-align: right; }
+
+/* ── Threat report card ── */
+.cs-report {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-top: 4px;
+  width: 100%;
+}
+.cs-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-dim);
+}
+.cs-report-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+/* Threat badges */
+.cs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.cs-badge.HIGH {
+  background: var(--high-dim);
+  border: 1px solid var(--high-glow);
+  color: var(--high);
+  box-shadow: 0 0 12px var(--high-glow);
+}
+.cs-badge.MEDIUM {
+  background: var(--medium-dim);
+  border: 1px solid var(--medium-glow);
+  color: var(--medium);
+  box-shadow: 0 0 12px var(--medium-glow);
+}
+.cs-badge.LOW {
+  background: var(--low-dim);
+  border: 1px solid var(--low-glow);
+  color: var(--low);
+  box-shadow: 0 0 12px var(--low-glow);
+}
+.cs-badge-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.cs-report-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Score meter */
+.cs-meter-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-meter-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.cs-meter-track {
+  height: 4px;
+  background: var(--border-dim);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cs-meter-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1);
+}
+.cs-meter-fill.HIGH   { background: linear-gradient(90deg, #ff4d6d, #ff1a45); }
+.cs-meter-fill.MEDIUM { background: linear-gradient(90deg, #ffad3b, #ff8c00); }
+.cs-meter-fill.LOW    { background: linear-gradient(90deg, #00c896, #00a07a); }
+
+/* Stats row */
+.cs-stats-row {
+  display: flex;
+  gap: 10px;
+}
+.cs-stat-card {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+.cs-stat-card-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.cs-stat-card-val {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+}
+.cs-stat-card-val.red    { color: var(--high); }
+.cs-stat-card-val.yellow { color: var(--medium); }
+.cs-stat-card-val.green  { color: var(--low); }
+
+/* Section blocks */
+.cs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cs-section-title {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cs-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-dim);
+}
+.cs-section-body {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+}
+.cs-risk-list {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-risk-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.cs-risk-bullet {
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.cs-risk-bullet.high   { background: var(--high-dim);   color: var(--high); }
+.cs-risk-bullet.medium { background: var(--medium-dim); color: var(--medium); }
+.cs-risk-bullet.low    { background: var(--low-dim);    color: var(--low); }
+
+.cs-rec-list {
+  list-style: none;
+  margin: 0; padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cs-rec-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.cs-rec-num {
+  width: 18px; height: 18px;
+  background: var(--accent-dim);
+  border: 1px solid var(--border-glow);
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Scan target tag ── */
+.cs-target-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: var(--bg-void);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-code);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Error card ── */
+.cs-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: rgba(255,77,109,0.08);
+  border: 1px solid rgba(255,77,109,0.2);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: #ff8fa3;
+}
+
+/* ── Thinking animation ── */
+.cs-thinking {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg);
+  border-top-left-radius: var(--radius-sm);
+  width: fit-content;
+}
+.cs-thinking-text {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.cs-dots {
+  display: flex;
+  gap: 4px;
+}
+.cs-dot {
+  width: 5px; height: 5px;
+  background: var(--accent);
+  border-radius: 50%;
+  animation: dotPulse 1.4s ease-in-out infinite;
+}
+.cs-dot:nth-child(1) { animation-delay: 0s; }
+.cs-dot:nth-child(2) { animation-delay: 0.2s; }
+.cs-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.3; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Input bar ── */
+.cs-input-zone {
+  padding: 20px 32px 28px;
+  border-top: 1px solid var(--border-dim);
+  background: var(--bg-deep);
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
+}
+.cs-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  max-width: 820px;
+  margin: 0 auto;
+  background: var(--bg-input);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-xl);
+  padding: 10px 14px;
+  transition: var(--transition);
+  position: relative;
+}
+.cs-input-wrapper:focus-within {
+  border-color: var(--border-glow);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.cs-mode-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--accent-dim);
+  border: 1px solid var(--border-glow);
+  border-radius: 100px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--accent);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+}
+
+.cs-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+}
+
+/* ── Streamlit widget overrides ── */
+.stTextArea textarea {
+  background: transparent !important;
+  border: none !important;
+  outline: none !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body) !important;
+  font-size: 14px !important;
+  resize: none !important;
+  box-shadow: none !important;
+  padding: 6px 4px !important;
+  min-height: 42px !important;
+  line-height: 1.5 !important;
+}
+.stTextArea { border: none !important; }
+.stTextArea > div { background: transparent !important; border: none !important; box-shadow: none !important; }
+.stTextArea > div > div { background: transparent !important; border: none !important; }
+
+.stButton > button {
+  background: var(--accent) !important;
+  color: #000 !important;
+  border: none !important;
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  padding: 10px 20px !important;
+  cursor: pointer !important;
+  transition: var(--transition) !important;
+  letter-spacing: 0.5px !important;
+  white-space: nowrap !important;
+}
+.stButton > button:hover {
+  background: #00daa6 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 16px var(--accent-glow) !important;
+}
+.stSelectbox > div > div {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-dim) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-md) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 12px !important;
+}
+.stSelectbox > div > div:hover { border-color: var(--border-glow) !important; }
+
+div[data-baseweb="select"] > div { background: var(--bg-card) !important; border-color: var(--border-dim) !important; }
+li[role="option"] { background: var(--bg-panel) !important; color: var(--text-primary) !important; }
+li[role="option"]:hover { background: var(--bg-hover) !important; }
+
+.stSpinner > div { color: var(--accent) !important; }
+</style>
+""", unsafe_allow_html=True)
+
+# ── Session state ──────────────────────────────────────────────────────────────
+if "messages"       not in st.session_state: st.session_state.messages = []
+if "cache"          not in st.session_state: st.session_state.cache = {}
+if "scan_count"     not in st.session_state: st.session_state.scan_count = 0
+if "threat_counts"  not in st.session_state: st.session_state.threat_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+if "mode"           not in st.session_state: st.session_state.mode = "URL Scanner"
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+def now_str():
+    return datetime.now().strftime("%H:%M")
+
+def score_to_pct(level: str) -> int:
+    return {"HIGH": 88, "MEDIUM": 52, "LOW": 14}.get(level, 20)
+
+def level_color_cls(level: str) -> str:
+    return {"HIGH": "red", "MEDIUM": "yellow", "LOW": "green"}.get(level, "green")
+
+def bullet_cls(level: str) -> str:
+    return {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}.get(level, "low")
+
+# ── API: Gemini ────────────────────────────────────────────────────────────────
+def call_gemini(prompt: str, retries: int = 3) -> str:
+    if not GEMINI_API_KEY:
+        return "__ERROR__No Gemini API key configured. Please add GEMINI_API_KEY to your .env file."
+    
+    delays = [2, 4, 6]
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": 1500,
+            "topP": 0.9,
+        }
+    }
+    url = f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}"
+
+    for attempt in range(retries):
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            elif resp.status_code == 429:
+                if attempt < retries - 1:
+                    time.sleep(delays[attempt])
+                    continue
+            elif resp.status_code in (500, 503):
+                if attempt < retries - 1:
+                    time.sleep(delays[attempt])
+                    continue
+            return f"__ERROR__API returned {resp.status_code}. Please try again."
+        except requests.exceptions.Timeout:
+            if attempt < retries - 1:
+                time.sleep(delays[attempt])
+                continue
+            return "__ERROR__Request timed out. Please try again."
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep(delays[attempt])
+                continue
+            return "__ERROR__Connection error. Please try again."
+    return "__ERROR__Analysis temporarily unavailable. Please try again."
+
+# ── API: VirusTotal ────────────────────────────────────────────────────────────
+def query_virustotal(url_to_scan: str) -> dict:
+    if not VIRUSTOTAL_API_KEY:
+        return {"error": "No VirusTotal API key configured. Please add VIRUSTOTAL_API_KEY to your .env file."}
+    
+    try:
+        url_id = base64.urlsafe_b64encode(url_to_scan.encode()).decode().rstrip("=")
+        headers = {"x-apikey": VIRUSTOTAL_API_KEY}
+        
+        resp = requests.get(
+            f"https://www.virustotal.com/api/v3/urls/{url_id}",
+            headers=headers, timeout=20
+        )
+
+        if resp.status_code == 200:
+            stats = resp.json()["data"]["attributes"]["last_analysis_stats"]
+            return {
+                "malicious":  stats.get("malicious",  0),
+                "suspicious": stats.get("suspicious", 0),
+                "harmless":   stats.get("harmless",   0),
+                "undetected": stats.get("undetected", 0),
+            }
+
+        # URL not in VT db yet — submit then poll
+        if resp.status_code == 404:
+            sub = requests.post(
+                "https://www.virustotal.com/api/v3/urls",
+                headers=headers,
+                data={"url": url_to_scan},
+                timeout=20,
+            )
+            if sub.status_code != 200:
+                return {"error": f"VirusTotal submission failed ({sub.status_code})."}
+            
+            analysis_id = sub.json()["data"]["id"]
+            for _ in range(10):
+                time.sleep(3)
+                poll = requests.get(
+                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                    headers=headers, timeout=20
+                )
+                if poll.status_code == 200:
+                    pd = poll.json()["data"]
+                    if pd["attributes"]["status"] == "completed":
+                        s = pd["attributes"]["stats"]
+                        return {
+                            "malicious":  s.get("malicious",  0),
+                            "suspicious": s.get("suspicious", 0),
+                            "harmless":   s.get("harmless",   0),
+                            "undetected": s.get("undetected", 0),
+                        }
+            return {"error": "Analysis timed out. Please try again."}
+
+        return {"error": f"VirusTotal error ({resp.status_code})."}
+
+    except requests.exceptions.Timeout:
+        return {"error": "VirusTotal request timed out."}
+    except Exception as e:
+        return {"error": "Could not reach VirusTotal. Check your connection."}
+
+# ── Core analysis functions ────────────────────────────────────────────────────
+def analyze_url(url: str) -> dict:
+    cache_key = f"url::{url}"
+    if cache_key in st.session_state.cache:
+        return st.session_state.cache[cache_key]
+
+    vt = query_virustotal(url)
+    if "error" in vt:
+        result = {"error": vt["error"]}
+        st.session_state.cache[cache_key] = result
+        return result
+
+    malicious  = vt["malicious"]
+    suspicious = vt["suspicious"]
+    harmless   = vt["harmless"]
+    undetected = vt["undetected"]
+    total      = malicious + suspicious + harmless + undetected or 1
+
+    if malicious >= 3:
+        level = "HIGH"
+    elif malicious >= 1 or suspicious >= 3:
+        level = "MEDIUM"
+    elif suspicious >= 1:
+        level = "MEDIUM" if suspicious >= 2 else "LOW"
+    else:
+        level = "LOW"
+
+    prompt = f"""You are a cybersecurity expert. Analyze this URL threat report and produce a structured assessment.
+
+URL: {url}
+VirusTotal Results:
+- Malicious detections: {malicious}
+- Suspicious detections: {suspicious}
+- Harmless verdicts: {harmless}
+- Undetected/Unknown: {undetected}
+- Overall threat level: {level}
+
+Respond in this EXACT JSON format (no markdown, no explanation outside JSON):
+{{
+  "summary": "2-3 sentence human-friendly explanation of what this URL's risk profile means",
+  "risks": ["risk point 1", "risk point 2", "risk point 3"],
+  "recommendations": ["action 1", "action 2", "action 3"]
+}}"""
+
+    raw = call_gemini(prompt)
+    if raw.startswith("__ERROR__"):
+        result = {"error": raw.replace("__ERROR__", "")}
+        st.session_state.cache[cache_key] = result
+        return result
+
+    try:
+        clean = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
+        parsed = json.loads(clean)
+    except Exception:
+        parsed = {
+            "summary": raw[:300],
+            "risks": ["Could not parse structured risks."],
+            "recommendations": ["Review the raw analysis above."]
+        }
+
+    result = {
+        "level":            level,
+        "malicious":        malicious,
+        "suspicious":       suspicious,
+        "harmless":         harmless,
+        "total":            total,
+        "summary":          parsed.get("summary", ""),
+        "risks":            parsed.get("risks", []),
+        "recommendations":  parsed.get("recommendations", []),
+        "target":           url,
+        "type":             "URL",
+    }
+    st.session_state.cache[cache_key] = result
+    return result
+
+
+def analyze_email(email: str) -> dict:
+    cache_key = f"email::{email}"
+    if cache_key in st.session_state.cache:
+        return st.session_state.cache[cache_key]
+
+    prompt = f"""You are a cybersecurity expert specializing in email threat intelligence.
+Analyze this email address for potential phishing targeting and social engineering exposure.
+
+Email: {email}
+
+IMPORTANT: Do NOT claim any specific real data breaches. Base analysis on pattern recognition only.
+
+Consider:
+- Domain reputation patterns (free vs corporate, unusual TLDs)
+- Common phishing targeting patterns for this type of address
+- Social engineering exposure likelihood
+- Account security posture indicators
+
+Assign a threat level: LOW, MEDIUM, or HIGH
+
+Respond in this EXACT JSON format (no markdown, no explanation outside JSON):
+{{
+  "level": "LOW|MEDIUM|HIGH",
+  "summary": "2-3 sentence human-friendly explanation",
+  "risks": ["risk 1", "risk 2", "risk 3"],
+  "recommendations": ["action 1", "action 2", "action 3"]
+}}"""
+
+    raw = call_gemini(prompt)
+    if raw.startswith("__ERROR__"):
+        result = {"error": raw.replace("__ERROR__", "")}
+        st.session_state.cache[cache_key] = result
+        return result
+
+    try:
+        clean = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
+        parsed = json.loads(clean)
+        level  = parsed.get("level", "MEDIUM").upper()
+        if level not in ("LOW", "MEDIUM", "HIGH"):
+            level = "MEDIUM"
+    except Exception:
+        level  = "MEDIUM"
+        parsed = {
+            "level": level,
+            "summary": raw[:300],
+            "risks": ["Could not parse structured risks."],
+            "recommendations": ["Review the raw analysis above."]
+        }
+
+    result = {
+        "level":           level,
+        "summary":         parsed.get("summary", ""),
+        "risks":           parsed.get("risks", []),
+        "recommendations": parsed.get("recommendations", []),
+        "target":          email,
+        "type":            "EMAIL",
+    }
+    st.session_state.cache[cache_key] = result
+    return result
+
+
+def analyze_text(text: str) -> dict:
+    cache_key = f"text::{text[:120]}"
+    if cache_key in st.session_state.cache:
+        return st.session_state.cache[cache_key]
+
+    prompt = f"""You are a cybersecurity expert specializing in phishing and social engineering detection.
+Analyze the following message/text for phishing intent, urgency manipulation, and scam indicators.
+
+Text to analyze:
+\"\"\"
+{text[:2000]}
+\"\"\"
+
+Look for:
+- Phishing indicators (fake urgency, suspicious links, credential harvesting)
+- Social engineering tactics (authority impersonation, fear/urgency triggers)
+- Scam patterns (too good to be true, prize notifications, fake threats)
+- Suspicious language patterns and red flags
+
+Assign a threat level: LOW, MEDIUM, or HIGH
+
+Respond in this EXACT JSON format (no markdown, no explanation outside JSON):
+{{
+  "level": "LOW|MEDIUM|HIGH",
+  "summary": "2-3 sentence human-friendly explanation of what this text appears to be and its risk",
+  "risks": ["specific risk 1", "specific risk 2", "specific risk 3"],
+  "recommendations": ["action 1", "action 2", "action 3"]
+}}"""
+
+    raw = call_gemini(prompt)
+    if raw.startswith("__ERROR__"):
+        result = {"error": raw.replace("__ERROR__", "")}
+        st.session_state.cache[cache_key] = result
+        return result
+
+    try:
+        clean = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
+        parsed = json.loads(clean)
+        level  = parsed.get("level", "MEDIUM").upper()
+        if level not in ("LOW", "MEDIUM", "HIGH"):
+            level = "MEDIUM"
+    except Exception:
+        level  = "MEDIUM"
+        parsed = {
+            "level": level,
+            "summary": raw[:300],
+            "risks": ["Could not parse structured risks."],
+            "recommendations": ["Review the raw analysis above."]
+        }
+
+    result = {
+        "level":           level,
+        "summary":         parsed.get("summary", ""),
+        "risks":           parsed.get("risks", []),
+        "recommendations": parsed.get("recommendations", []),
+        "target":          text[:80] + ("…" if len(text) > 80 else ""),
+        "type":            "TEXT",
+    }
+    st.session_state.cache[cache_key] = result
+    return result
+
+# ── Render functions ───────────────────────────────────────────────────────────
+def render_report(r: dict) -> str:
+    level = r.get("level", "LOW")
+    pct   = score_to_pct(level)
+    clr   = level_color_cls(level)
+    bcls  = bullet_cls(level)
+    target = r.get("target", "")
+    rtype  = r.get("type", "")
+
+    icon_map = {"URL": "🔗", "EMAIL": "📧", "TEXT": "📝"}
+    icon = icon_map.get(rtype, "🔍")
+
+    # Build stats row for URL
+    stats_html = ""
+    if rtype == "URL":
+        m = r.get("malicious", 0)
+        s = r.get("suspicious", 0)
+        h = r.get("harmless", 0)
+        stats_html = f"""
+        <div class="cs-stats-row">
+          <div class="cs-stat-card">
+            <div class="cs-stat-card-label">Malicious</div>
+            <div class="cs-stat-card-val red">{m}</div>
+          </div>
+          <div class="cs-stat-card">
+            <div class="cs-stat-card-label">Suspicious</div>
+            <div class="cs-stat-card-val yellow">{s}</div>
+          </div>
+          <div class="cs-stat-card">
+            <div class="cs-stat-card-label">Clean</div>
+            <div class="cs-stat-card-val green">{h}</div>
+          </div>
+        </div>"""
+
+    # Risks
+    risks_items = "".join(
+        f'<li class="cs-risk-item"><span class="cs-risk-bullet {bcls}">▲</span><span>{ri}</span></li>'
+        for ri in r.get("risks", [])
+    )
+    # Recs
+    rec_items = "".join(
+        f'<li class="cs-rec-item"><span class="cs-rec-num">{i+1}</span><span>{rc}</span></li>'
+        for i, rc in enumerate(r.get("recommendations", []))
+    )
+
+    target_display = (target[:64] + "…") if len(target) > 64 else target
+
+    return f"""
+    <div class="cs-report">
+      <div class="cs-report-header">
+        <div class="cs-report-title">
+          {icon} THREAT ANALYSIS &nbsp;·&nbsp;
+          <span class="cs-target-tag">{target_display}</span>
+        </div>
+        <div class="cs-badge {level}">
+          <span class="cs-badge-dot"></span>
+          {level}
+        </div>
+      </div>
+      <div class="cs-report-body">
+        <div class="cs-meter-wrap">
+          <div class="cs-meter-label"><span>RISK SCORE</span><span>{pct}%</span></div>
+          <div class="cs-meter-track">
+            <div class="cs-meter-fill {level}" style="width:{pct}%"></div>
+          </div>
+        </div>
+        {stats_html}
+        <div class="cs-section">
+          <div class="cs-section-title">SUMMARY</div>
+          <div class="cs-section-body">{r.get("summary","")}</div>
+        </div>
+        <div class="cs-section">
+          <div class="cs-section-title">KEY RISKS</div>
+          <ul class="cs-risk-list">{risks_items}</ul>
+        </div>
+        <div class="cs-section">
+          <div class="cs-section-title">RECOMMENDATIONS</div>
+          <ul class="cs-rec-list">{rec_items}</ul>
+        </div>
+      </div>
+    </div>"""
+
+
+def render_error(msg: str) -> str:
+    return f"""
+    <div class="cs-error">
+      <span>⚠</span>
+      <span>{msg}</span>
+    </div>"""
+
+
+def render_thinking() -> str:
+    return """
+    <div class="cs-thinking">
+      <div class="cs-dots">
+        <div class="cs-dot"></div>
+        <div class="cs-dot"></div>
+        <div class="cs-dot"></div>
+      </div>
+      <span class="cs-thinking-text">Analyzing threat…</span>
+    </div>"""
+
+
+def render_message(msg: dict) -> str:
+    role   = msg["role"]
+    ts     = msg.get("ts", "")
+    avatar = "👤" if role == "user" else "🛡️"
+
+    if role == "user":
+        content_html = f'<div class="cs-bubble user">{msg["content"]}</div>'
+    else:
+        if msg.get("report"):
+            content_html = render_report(msg["report"])
+        elif msg.get("error"):
+            content_html = render_error(msg["content"])
+        else:
+            content_html = f'<div class="cs-bubble bot">{msg["content"]}</div>'
+
+    meta = f'<div class="cs-msg-meta">{ts}</div>'
+
+    if role == "user":
+        return f"""
+        <div class="cs-msg user">
+          <div class="cs-avatar user">{avatar}</div>
+          <div>
+            {content_html}
+            {meta}
+          </div>
+        </div>"""
+    else:
+        return f"""
+        <div class="cs-msg bot">
+          <div class="cs-avatar bot">{avatar}</div>
+          <div style="flex:1;">
+            {content_html}
+            {meta}
+          </div>
+        </div>"""
+
+# ── Main UI ────────────────────────────────────────────────────────────────────
+# Header
+st.markdown(f"""
+<div class="cs-header">
+  <div class="cs-brand">
+    <div class="cs-logo">🛡️</div>
+    <div class="cs-brand-text">
+      <h1>CyberSentinel AI</h1>
+      <p>Threat Analysis Platform</p>
+    </div>
+  </div>
+  <div class="cs-status-bar">
+    <div class="cs-status-pill">
+      <div class="cs-status-dot"></div>
+      SYSTEMS ONLINE
+    </div>
+    <div class="cs-time" id="cs-clock">{datetime.now().strftime("%H:%M UTC")}</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Body layout
+left_col, main_col = st.columns([1, 3.5], gap="small")
+
+# ── Left sidebar ──────────────────────────────────────────────────────────────
+with left_col:
+    st.markdown('<div style="height:16px"></div>', unsafe_allow_html=True)
+
+    modes = [
+        ("🔗", "URL Scanner",     "Scan URLs for malware & threats",      "url"),
+        ("📧", "Email Intel",     "Phishing & exposure analysis",          "email"),
+        ("📝", "Text Analyzer",   "Detect phishing & scam content",        "text"),
+    ]
+    for icon, label, desc, cls in modes:
+        active_cls = "active" if st.session_state.mode == label else ""
+        if st.button(f"{icon}  {label}", key=f"mode_{label}", use_container_width=True):
+            st.session_state.mode = label
+
+    st.markdown('<div class="cs-sidebar-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="cs-sidebar-title">SESSION STATS</div>', unsafe_allow_html=True)
+    
+    tc = st.session_state.threat_counts
+    stats_html = f"""
+    <div style="padding: 0 4px;">
+      <div class="cs-stat-row">
+        <span class="cs-stat-label">Total Scans</span>
+        <span class="cs-stat-value">{st.session_state.scan_count}</span>
+      </div>
+      <div class="cs-stat-row">
+        <span class="cs-stat-label" style="color:var(--high);">● HIGH</span>
+        <span class="cs-stat-value" style="color:var(--high);">{tc['HIGH']}</span>
+      </div>
+      <div class="cs-stat-row">
+        <span class="cs-stat-label" style="color:var(--medium);">● MEDIUM</span>
+        <span class="cs-stat-value" style="color:var(--medium);">{tc['MEDIUM']}</span>
+      </div>
+      <div class="cs-stat-row">
+        <span class="cs-stat-label" style="color:var(--low);">● LOW</span>
+        <span class="cs-stat-value" style="color:var(--low);">{tc['LOW']}</span>
+      </div>
+    </div>"""
+    st.markdown(stats_html, unsafe_allow_html=True)
+
+    st.markdown('<div class="cs-sidebar-divider"></div>', unsafe_allow_html=True)
+    if st.button("🗑  Clear Chat", key="clear_btn", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
+
+# ── Main chat ─────────────────────────────────────────────────────────────────
+with main_col:
+    # Messages area
+    if not st.session_state.messages:
+        # Welcome screen
+        st.markdown("""
+        <div class="cs-welcome">
+          <div class="cs-welcome-icon">🛡️</div>
+          <h2>CyberSentinel AI</h2>
+          <p>Your AI-powered cyber threat intelligence assistant. Analyze URLs, emails, and suspicious messages in real time.</p>
+          <div class="cs-welcome-chips">
+            <div class="cs-chip">🔗 Scan a URL for malware</div>
+            <div class="cs-chip">📧 Analyze an email address</div>
+            <div class="cs-chip">📝 Check suspicious messages</div>
+            <div class="cs-chip">🎯 Detect phishing attempts</div>
+            <div class="cs-chip">⚠️ Identify social engineering</div>
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        # Render messages
+        msgs_html = '<div class="cs-messages">'
+        for msg in st.session_state.messages:
+            msgs_html += render_message(msg)
+        msgs_html += '</div>'
+        st.markdown(msgs_html, unsafe_allow_html=True)
+
+    # ── Input zone ────────────────────────────────────────────────────────────
+    mode = st.session_state.mode
+    mode_icons  = {"URL Scanner": "🔗", "Email Intel": "📧", "Text Analyzer": "📝"}
+    placeholders = {
+        "URL Scanner":   "Paste a URL to scan — e.g. https://suspicious-site.com",
+        "Email Intel":   "Enter an email address — e.g. suspicious@domain.com",
+        "Text Analyzer": "Paste the message or email content to analyze…",
+    }
+
+    st.markdown(f"""
+    <div class="cs-input-zone">
+      <div style="max-width:820px; margin:0 auto; margin-bottom:8px; display:flex; gap:8px; align-items:center;">
+        <span style="font-size:11px; color:var(--text-muted); font-family:var(--font-mono);">MODE:</span>
+        <span class="cs-mode-chip">{mode_icons.get(mode,'')} {mode.upper()}</span>
+      </div>
+    """, unsafe_allow_html=True)
+
+    inp_col, btn_col = st.columns([6, 1], gap="small")
+    with inp_col:
+        user_input = st.text_area(
+            label="input",
+            label_visibility="collapsed",
+            placeholder=placeholders.get(mode, "Enter your query…"),
+            key=f"input_{mode}",
+            height=68,
+        )
+    with btn_col:
+        st.markdown('<div style="height:8px"></div>', unsafe_allow_html=True)
+        analyze_btn = st.button("SCAN →", key="analyze_btn", use_container_width=True)
+
+    st.markdown("""
+      <div class="cs-hint">↵ Press SCAN or Ctrl+Enter · Results cached per session</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Handle analysis ───────────────────────────────────────────────────────
+    if analyze_btn and user_input and user_input.strip():
+        inp = user_input.strip()
+
+        # Add user message
+        st.session_state.messages.append({
+            "role":    "user",
+            "content": inp,
+            "ts":      now_str(),
+        })
+
+        # Run analysis
+        with st.spinner(""):
+            if mode == "URL Scanner":
+                result = analyze_url(inp)
+            elif mode == "Email Intel":
+                result = analyze_email(inp)
+            else:
+                result = analyze_text(inp)
+
+        if "error" in result:
+            st.session_state.messages.append({
+                "role":    "bot",
+                "content": result["error"],
+                "error":   True,
+                "ts":      now_str(),
+            })
+        else:
+            lvl = result.get("level", "LOW")
+            st.session_state.scan_count += 1
+            st.session_state.threat_counts[lvl] += 1
+            st.session_state.messages.append({
+                "role":   "bot",
+                "report": result,
+                "ts":     now_str(),
+            })
+
+        st.rerun()
